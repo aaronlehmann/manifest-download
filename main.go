@@ -61,9 +61,21 @@ func checkRepo(registry distribution.Namespace, repoName string) error {
 			return fmt.Errorf("unexpected error getting manifest by tag: %v", err)
 		}
 
-		manifestsLock.Lock()
-		manifestsList = append(manifestsList, mnfst)
-		manifestsLock.Unlock()
+		dir := "manifests/" + repoName
+
+		os.MkdirAll(dir, 0700)
+		mnfstFile, err := os.Create(dir + "/" + tag)
+		if err != nil {
+			return err
+		}
+
+		rjson, err := json.MarshalIndent(mnfst, "", "  ")
+		if err != nil {
+			return err
+		}
+
+		mnfstFile.Write(rjson)
+		mnfstFile.Close()
 	}
 
 	return nil
@@ -125,7 +137,7 @@ func main() {
 
 		n, err := registry.Repositories(ctx, repos, "")
 		if err != nil && err != io.EOF {
-			panic(fmt.Sprintf("unexpected error getting repo: %v", err))
+			panic(fmt.Sprintf("unexpected error getting repos: %v", err))
 		}
 		if n == maxRepos {
 			panic("too many repositories")
@@ -133,6 +145,18 @@ func main() {
 
 		repos = repos[:n]
 		fmt.Fprintln(os.Stderr, "finished listing")
+		reposFile, err := os.Create("reposlist")
+		if err != nil {
+			panic(fmt.Sprintf("could not open reposlist for writing: %v", err))
+		}
+
+		rjson, err := json.MarshalIndent(repos, "", "  ")
+		if err != nil {
+			panic("could not marshal repos list")
+		}
+
+		reposFile.Write(rjson)
+		reposFile.Close()
 	}
 
 	var wg sync.WaitGroup
@@ -157,10 +181,4 @@ func main() {
 	close(repoChan)
 
 	wg.Wait()
-
-	rjson, err := json.MarshalIndent(manifestsList, "", "  ")
-	if err != nil {
-		panic(err.Error())
-	}
-	fmt.Printf("%s", rjson)
 }
